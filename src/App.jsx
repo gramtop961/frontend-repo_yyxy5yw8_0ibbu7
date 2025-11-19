@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useRef } from 'react'
 import Spline from '@splinetool/react-spline'
 
 function Tag({ label }) {
@@ -14,6 +14,8 @@ function App() {
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
+  const [fileName, setFileName] = useState('')
+  const fileRef = useRef(null)
 
   const backend = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
 
@@ -45,6 +47,31 @@ function App() {
     }
   }
 
+  const analyzeFile = async (file) => {
+    if (!file) return
+    setError('')
+    setResult(null)
+    setLoading(true)
+    try {
+      const form = new FormData()
+      form.append('file', file)
+      const res = await fetch(`${backend}/analyze-file`, {
+        method: 'POST',
+        body: form,
+      })
+      if (!res.ok) {
+        const msg = await res.text()
+        throw new Error(`Upload failed: ${res.status} ${res.statusText} - ${msg}`)
+      }
+      const data = await res.json()
+      setResult(data)
+    } catch (e) {
+      setError(e.message || 'Failed to analyze file. Please try again.')
+    } finally {
+      setLoading(false)
+    }
+  }
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Hero with Spline */}
@@ -55,7 +82,7 @@ function App() {
           <div className="text-center px-4">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">Regulatory Circular AI Tester</h1>
             <p className="mt-3 text-slate-300 max-w-2xl mx-auto">
-              Paste a circular and get a concise title, impacted departments, briefing bullets, and a ready-to-send internal memo.
+              Paste a circular or attach a PDF/DOCX to get a concise title, impacted departments, briefing bullets, and a ready-to-send internal memo.
             </p>
           </div>
         </div>
@@ -75,9 +102,32 @@ function App() {
               className="w-full h-[320px] md:h-[420px] resize-y rounded-xl bg-slate-950/60 border border-slate-800/80 focus:border-blue-500/60 outline-none p-4 text-slate-100 placeholder-slate-500"
             />
 
-            {/* File upload hint (optional) */}
-            <div className="mt-3 text-xs text-slate-400">
-              Optional file upload (PDF/DOCX) can be added later. For now, use text input.
+            {/* File upload */}
+            <div className="mt-4">
+              <div className="flex items-center gap-3">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                  className="hidden"
+                  onChange={(e) => {
+                    const f = e.target.files?.[0]
+                    if (f) {
+                      setFileName(f.name)
+                      analyzeFile(f)
+                    }
+                  }}
+                />
+                <button
+                  onClick={() => fileRef.current?.click()}
+                  disabled={loading}
+                  className="inline-flex items-center gap-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 font-semibold border border-slate-700"
+                >
+                  Attach PDF/DOCX
+                </button>
+                {fileName && <span className="text-xs text-slate-400 truncate max-w-[200px]">{fileName}</span>}
+              </div>
+              <div className="mt-2 text-xs text-slate-400">You can attach a PDF or DOCX. We'll extract text and analyze it automatically.</div>
             </div>
 
             {/* Actions */}
@@ -146,7 +196,7 @@ function App() {
 
                 <div>
                   <div className="text-xs uppercase tracking-wider text-slate-400 mb-2">Briefing Summary</div>
-                  <ul className="list-disc list-inside space-y-1 text-slate-200">
+                  <ul className="list-disc list-inside space-y-1 text-slate-2 00">
                     {result.summary_bullets.map((b, i) => (
                       <li key={i}>{b}</li>
                     ))}
