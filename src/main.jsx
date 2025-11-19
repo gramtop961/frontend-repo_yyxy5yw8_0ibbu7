@@ -11,6 +11,7 @@ import Pricing from './pages/Pricing'
 import About from './pages/About'
 import Contact from './pages/Contact'
 import Demo from './pages/Demo'
+import History from './pages/History'
 import Test from './Test'
 
 ReactDOM.createRoot(document.getElementById('root')).render(
@@ -25,6 +26,7 @@ ReactDOM.createRoot(document.getElementById('root')).render(
           <Route path="/about" element={<About />} />
           <Route path="/contact" element={<Contact />} />
           <Route path="/demo" element={<Demo />} />
+          <Route path="/history" element={<History />} />
         </Route>
         <Route path="/test" element={<Test />} />
       </Routes>
