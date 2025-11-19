@@ -1,4 +1,4 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useCallback } from 'react'
 import Spline from '@splinetool/react-spline'
 
 function Tag({ label }) {
@@ -15,6 +15,7 @@ function App() {
   const [error, setError] = useState('')
   const [result, setResult] = useState(null)
   const [fileName, setFileName] = useState('')
+  const [isDragging, setIsDragging] = useState(false)
   const fileRef = useRef(null)
 
   const backend = import.meta.env.VITE_BACKEND_URL || 'http://localhost:8000'
@@ -24,7 +25,7 @@ function App() {
     setResult(null)
     const trimmed = (text || '').trim()
     if (!trimmed) {
-      setError('Please paste the circular text before analyzing.')
+      setError('Paste text or drag & drop a PDF/DOCX to analyze.')
       return
     }
     setLoading(true)
@@ -72,6 +73,53 @@ function App() {
     }
   }
 
+  const onDrop = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+    if (loading) return
+
+    let file = null
+    if (e.dataTransfer?.items && e.dataTransfer.items.length > 0) {
+      const item = e.dataTransfer.items[0]
+      if (item.kind === 'file') {
+        file = item.getAsFile()
+      }
+      e.dataTransfer.items.clear()
+    } else if (e.dataTransfer?.files && e.dataTransfer.files.length > 0) {
+      file = e.dataTransfer.files[0]
+    }
+
+    if (!file) return
+
+    const name = file.name.toLowerCase()
+    const type = file.type
+    const isPDF = type === 'application/pdf' || name.endsWith('.pdf')
+    const isDOCX =
+      type === 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+      name.endsWith('.docx')
+
+    if (!isPDF && !isDOCX) {
+      setError('Please drop a PDF or DOCX file.')
+      return
+    }
+
+    setFileName(file.name)
+    analyzeFile(file)
+  }, [loading])
+
+  const onDragOver = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    if (!isDragging) setIsDragging(true)
+  }, [isDragging])
+
+  const onDragLeave = useCallback((e) => {
+    e.preventDefault()
+    e.stopPropagation()
+    setIsDragging(false)
+  }, [])
+
   return (
     <div className="min-h-screen bg-slate-950 text-white">
       {/* Hero with Spline */}
@@ -82,7 +130,7 @@ function App() {
           <div className="text-center px-4">
             <h1 className="text-3xl sm:text-4xl md:text-5xl font-extrabold tracking-tight">Regulatory Circular AI Tester</h1>
             <p className="mt-3 text-slate-300 max-w-2xl mx-auto">
-              Paste a circular or attach a PDF/DOCX to get a concise title, impacted departments, briefing bullets, and a ready-to-send internal memo.
+              Drag & drop a PDF/DOCX or paste the circular text to get a concise title, impacted departments, briefing bullets, and a ready-to-send internal memo.
             </p>
           </div>
         </div>
@@ -92,43 +140,57 @@ function App() {
       <div className="relative mx-auto max-w-6xl px-4 pb-20 -mt-8">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Input Panel */}
-          <div className="bg-slate-900/80 border border-slate-800 rounded-2xl p-5 md:p-6 shadow-xl">
+          <div
+            className={`bg-slate-900/80 border rounded-2xl p-5 md:p-6 shadow-xl transition-colors ${
+              isDragging ? 'border-blue-500/60 bg-slate-900' : 'border-slate-800'
+            }`}
+            onDrop={onDrop}
+            onDragOver={onDragOver}
+            onDragEnter={onDragOver}
+            onDragLeave={onDragLeave}
+          >
             <h2 className="text-lg font-semibold mb-3">Input</h2>
-            <label className="block text-sm text-slate-300 mb-2">Paste regulatory circular (plain text)</label>
+
+            {/* Dropzone */}
+            <div
+              className={`relative border-2 border-dashed rounded-xl p-5 flex flex-col items-center justify-center text-center transition-colors ${
+                isDragging ? 'border-blue-500 bg-blue-500/5' : 'border-slate-800/80 bg-slate-950/40'
+              }`}
+            >
+              <input
+                ref={fileRef}
+                type="file"
+                accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+                className="hidden"
+                onChange={(e) => {
+                  const f = e.target.files?.[0]
+                  if (f) {
+                    setFileName(f.name)
+                    analyzeFile(f)
+                  }
+                }}
+              />
+              <div className="text-slate-300 font-medium">Drag & drop your PDF or DOCX here</div>
+              <div className="text-xs text-slate-400 mt-1">It will be read automatically — no need to paste.</div>
+              <button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                disabled={loading}
+                className="mt-3 inline-flex items-center gap-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 font-semibold border border-slate-700"
+              >
+                Or choose a file
+              </button>
+              {fileName && <div className="mt-2 text-xs text-slate-400 truncate max-w-[260px]">Selected: {fileName}</div>}
+            </div>
+
+            {/* Manual text (optional) */}
+            <label className="block text-sm text-slate-300 mt-5 mb-2">Or paste regulatory circular (plain text)</label>
             <textarea
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Paste the full circular text here..."
-              className="w-full h-[320px] md:h-[420px] resize-y rounded-xl bg-slate-950/60 border border-slate-800/80 focus:border-blue-500/60 outline-none p-4 text-slate-100 placeholder-slate-500"
+              placeholder="Paste the full circular text here... (optional)"
+              className="w-full h-[240px] md:h-[300px] resize-y rounded-xl bg-slate-950/60 border border-slate-800/80 focus:border-blue-500/60 outline-none p-4 text-slate-100 placeholder-slate-500"
             />
-
-            {/* File upload */}
-            <div className="mt-4">
-              <div className="flex items-center gap-3">
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-                  className="hidden"
-                  onChange={(e) => {
-                    const f = e.target.files?.[0]
-                    if (f) {
-                      setFileName(f.name)
-                      analyzeFile(f)
-                    }
-                  }}
-                />
-                <button
-                  onClick={() => fileRef.current?.click()}
-                  disabled={loading}
-                  className="inline-flex items-center gap-2 rounded-lg bg-slate-800 hover:bg-slate-700 disabled:opacity-60 disabled:cursor-not-allowed px-4 py-2 font-semibold border border-slate-700"
-                >
-                  Attach PDF/DOCX
-                </button>
-                {fileName && <span className="text-xs text-slate-400 truncate max-w-[200px]">{fileName}</span>}
-              </div>
-              <div className="mt-2 text-xs text-slate-400">You can attach a PDF or DOCX. We'll extract text and analyze it automatically.</div>
-            </div>
 
             {/* Actions */}
             <div className="mt-5 flex items-center gap-3">
@@ -146,7 +208,7 @@ function App() {
                     Analyzing…
                   </>
                 ) : (
-                  <>Analyze Circular</>
+                  <>Analyze Text</>
                 )}
               </button>
               <div className="text-xs text-slate-400">Backend: <span className="font-mono">{backend}</span></div>
@@ -165,7 +227,7 @@ function App() {
 
             {!result && (
               <div className="text-slate-400 text-sm">
-                Results will appear here after analysis. The page is optimized to handle long text inputs.
+                Results will appear here after analysis. Drop a PDF/DOCX or paste text to begin.
               </div>
             )}
 
@@ -196,7 +258,7 @@ function App() {
 
                 <div>
                   <div className="text-xs uppercase tracking-wider text-slate-400 mb-2">Briefing Summary</div>
-                  <ul className="list-disc list-inside space-y-1 text-slate-2 00">
+                  <ul className="list-disc list-inside space-y-1 text-slate-200">
                     {result.summary_bullets.map((b, i) => (
                       <li key={i}>{b}</li>
                     ))}
